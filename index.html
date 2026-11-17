@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Bản Đồ Điều Hành Cứu Hộ LoRa Mesh</title>
+  <link href="maplibre-gl.css" rel="stylesheet" />
+  <script src="maplibre-gl.js"></script>
+  <script src="map_data.js"></script>
+  <style>
+    :root {
+      --g-blue: #1a73e8;
+      --g-blue-dark: #1557b0;
+      --g-blue-light: #e8f0fe;
+      --g-red: #d93025;
+      --g-red-light: #fce8e6;
+      --g-green: #188038;
+      --g-green-light: #e6f4ea;
+      --g-yellow: #f9ab00;
+      --g-text: #202124;
+      --g-text-sub: #5f6368;
+      --g-border: #dadce0;
+      --g-bg: #f8f9fa;
+      --shadow-card: 0 2px 6px rgba(60,64,67,0.15), 0 1px 2px rgba(60,64,67,0.3);
+      --shadow-float: 0 4px 16px rgba(60,64,67,0.18), 0 1px 3px rgba(60,64,67,0.12);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      height: 100vh; width: 100vw; overflow: hidden;
+      background: #e5e3df; color: var(--g-text);
+    }
+
+    #map { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+    /* Bảng điều khiển nổi kiểu Google Maps Desktop */
+    #sidebar {
+      position: absolute; top: 14px; left: 14px; bottom: 14px;
+      width: 380px; background: #ffffff;
+      border-radius: 16px; box-shadow: var(--shadow-float);
+      z-index: 10; display: flex; flex-direction: column;
+      overflow: hidden; border: 1px solid rgba(0,0,0,0.06);
+    }
+
+    .sidebar-header {
+      padding: 16px 18px 12px;
+      border-bottom: 1px solid var(--g-border);
+      background: #fff;
+    }
+
+    .brand-row {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+    }
+    .brand-icon {
+      width: 34px; height: 34px; border-radius: 8px;
+      background: var(--g-blue-light); color: var(--g-blue);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .brand-title {
+      font-size: 16px; font-weight: 700; color: var(--g-text); line-height: 1.2;
+    }
+    .brand-sub {
+      font-size: 12px; color: var(--g-text-sub); margin-top: 2px;
+    }
+
+    .status-bar {
+      font-size: 12.5px; padding: 7px 11px; border-radius: 8px;
+      background: var(--g-bg); color: var(--g-text-sub);
+      border: 1px solid var(--g-border);
+      display: flex; align-items: center; gap: 7px;
+    }
+
+    .sidebar-body {
+      flex: 1; overflow-y: auto; padding: 14px 16px;
+      background: var(--g-bg);
+    }
+    .sidebar-body::-webkit-scrollbar { width: 6px; }
+    .sidebar-body::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+
+    /* Thẻ Dẫn đường kiểu Google Maps Directions */
+    .sar-box {
+      background: #ffffff;
+      border: 1px solid var(--g-border);
+      border-radius: 12px; padding: 14px;
+      margin-bottom: 14px;
+      box-shadow: 0 1px 3px rgba(60,64,67,0.08);
+    }
+    .sar-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 10px; padding-bottom: 8px;
+      border-bottom: 1px solid #f1f3f4;
+    }
+    .sar-title {
+      font-size: 13px; font-weight: 700; color: var(--g-blue);
+      text-transform: uppercase; letter-spacing: 0.3px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .eta-badge {
+      background: var(--g-green-light); color: var(--g-green);
+      padding: 3px 9px; border-radius: 999px;
+      font-size: 12.5px; font-weight: 700;
+    }
+
+    .sar-metrics {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+      margin-bottom: 10px;
+    }
+    .metric-item {
+      background: var(--g-bg); padding: 8px 10px;
+      border-radius: 8px; border: 1px solid #eef0f2;
+    }
+    .metric-label { font-size: 11px; color: var(--g-text-sub); margin-bottom: 2px; }
+    .metric-val { font-size: 14px; font-weight: 700; color: var(--g-text); }
+    .metric-val.blue { color: var(--g-blue); }
+    .metric-val.amber { color: #d97706; }
+
+    .sar-route-row {
+      font-size: 12.5px; color: var(--g-text-sub);
+      padding: 6px 0; border-top: 1px dashed var(--g-border);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+
+    .btn-row { display: flex; gap: 8px; margin-top: 10px; }
+    .btn {
+      flex: 1; padding: 8px 12px; border-radius: 999px;
+      font-weight: 600; font-size: 12.5px; cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      transition: all 0.15s ease; border: 1px solid transparent;
+    }
+    .btn-focus {
+      background: var(--g-blue); color: #fff;
+      box-shadow: 0 1px 2px rgba(26,115,232,0.3);
+    }
+    .btn-focus:hover { background: var(--g-blue-dark); }
+    .btn-clear {
+      background: #fff; color: var(--g-red);
+      border-color: var(--g-border);
+    }
+    .btn-clear:hover { background: var(--g-red-light); border-color: #f5c2c7; }
+
+    .section-label {
+      font-size: 11.5px; font-weight: 700; color: var(--g-text-sub);
+      text-transform: uppercase; letter-spacing: 0.4px;
+      margin: 4px 0 8px 2px;
+    }
+
+    /* Danh sách các Node kiểu thẻ địa điểm Google Maps */
+    .node-card {
+      background: #ffffff; border: 1px solid var(--g-border);
+      border-left: 4px solid var(--g-green);
+      padding: 12px 14px; margin-bottom: 10px;
+      border-radius: 10px; font-size: 12.5px; line-height: 1.55;
+      box-shadow: 0 1px 2px rgba(60,64,67,0.06);
+      transition: transform 0.12s ease, box-shadow 0.12s ease;
+    }
+    .node-card:hover {
+      box-shadow: 0 3px 8px rgba(60,64,67,0.12);
+    }
+    .node-card.mobile {
+      border-left-color: var(--g-red);
+      background: #fffafa;
+    }
+    .node-title {
+      font-weight: 700; font-size: 14px; color: var(--g-text);
+      margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;
+    }
+    .rssi-pill {
+      font-size: 11.5px; font-weight: 600; color: var(--g-text-sub);
+      background: var(--g-bg); padding: 2px 7px; border-radius: 6px;
+      border: 1px solid var(--g-border);
+    }
+    .node-meta { color: var(--g-text-sub); font-size: 12px; }
+    .node-meta b { color: var(--g-text); font-weight: 600; }
+    .path-badge {
+      background: var(--g-blue-light); color: var(--g-blue);
+      padding: 3px 9px; border-radius: 6px; font-weight: 600;
+      font-size: 11.5px; display: inline-block; margin-top: 6px;
+    }
+    .speed-badge { color: #b45309; font-weight: 700; }
+
+    /* Nhãn hiển thị các Node LoRa trên bản đồ (Light Mode Pills) */
+    .marker-label {
+      background: #ffffff; color: var(--g-text);
+      padding: 5px 10px; border-radius: 18px;
+      font-size: 12px; font-weight: 700;
+      border: 2px solid var(--g-green);
+      white-space: nowrap; box-shadow: var(--shadow-card);
+      z-index: 20; text-align: center;
+    }
+    .marker-label.mobile {
+      border-color: var(--g-red); background: var(--g-red); color: #ffffff;
+    }
+    .marker-label.gw {
+      border-color: var(--g-blue); background: var(--g-blue); color: #ffffff;
+    }
+    .marker-sub {
+      font-size: 10.5px; color: var(--g-text-sub);
+      display: block; margin-top: 1px; font-weight: 500;
+    }
+    .marker-label.mobile .marker-sub,
+    .marker-label.gw .marker-sub {
+      color: rgba(255,255,255,0.92);
+    }
+
+    .start-marker {
+      background: var(--g-green); color: #fff;
+      padding: 3px 8px; border-radius: 12px;
+      font-size: 11px; font-weight: 700;
+      border: 2px solid #fff; box-shadow: var(--shadow-card); z-index: 15;
+    }
+    .milestone-marker {
+      background: #ffffff; color: var(--g-text);
+      padding: 2px 6px; border-radius: 10px;
+      font-size: 10px; font-weight: 700;
+      border: 1px solid var(--g-border);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+      pointer-events: none; z-index: 12;
+    }
+
+    /* Nhãn tên đường & địa danh chuẩn Google Maps Light Mode */
+    .road-label {
+      color: #5f6368; font-size: 11px; font-weight: 600;
+      text-shadow: -1.5px -1.5px 0 #ffffff, 1.5px -1.5px 0 #ffffff, -1.5px 1.5px 0 #ffffff, 1.5px 1.5px 0 #ffffff;
+      pointer-events: none; white-space: nowrap; z-index: 1;
+    }
+    .poi-label {
+      color: #3c4043; font-size: 11px; font-weight: 600;
+      background: rgba(255, 255, 255, 0.92);
+      padding: 2px 7px; border-radius: 10px;
+      border: 1px solid var(--g-border);
+      box-shadow: 0 1px 2px rgba(60,64,67,0.12);
+      pointer-events: none; white-space: nowrap; z-index: 1;
+    }
+
+    /* Thanh công cụ nổi dạng viên thuốc (Google Maps Filter Chips) */
+    .map-overlay-ctrl {
+      position: absolute; top: 14px; left: 408px; z-index: 5;
+      display: flex; flex-wrap: wrap; gap: 8px;
+    }
+    .chip-toggle {
+      background: #ffffff; color: var(--g-text);
+      padding: 7px 13px; border-radius: 999px;
+      border: 1px solid var(--g-border);
+      box-shadow: var(--shadow-card);
+      font-size: 12.5px; font-weight: 600;
+      cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
+      user-select: none; transition: background 0.15s;
+    }
+    .chip-toggle:hover { background: var(--g-bg); }
+    .chip-toggle input { accent-color: var(--g-blue); width: 14px; height: 14px; margin: 0; cursor: pointer; }
+
+    @media (max-width: 768px) {
+      #sidebar {
+        top: auto; left: 0; right: 0; bottom: 0;
+        width: 100%; height: 48vh;
+        border-radius: 20px 20px 0 0;
+      }
+      .map-overlay-ctrl {
+        top: 10px; left: 10px; right: 50px;
+      }
+      .chip-toggle { padding: 5px 10px; font-size: 11.5px; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="sidebar">
+  <div class="sidebar-header">
+    <div class="brand-row">
+      <div class="brand-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          <circle cx="12" cy="11" r="3"/>
+        </svg>
+      </div>
+      <div>
+        <div class="brand-title">Trạm Chỉ Huy LoRa Mesh</div>
+        <div class="brand-sub">Bản đồ điều hành & dẫn đường cứu hộ ngoại tuyến</div>
+      </div>
+    </div>
+    <div class="status-bar" id="conn-status">Đang kiểm tra dữ liệu lưu trữ...</div>
+  </div>
+
+  <div class="sidebar-body">
+    <!-- BẢNG TÁC CHIẾN TIẾP CẬN MỤC TIÊU N2 -->
+    <div class="sar-box">
+      <div class="sar-header">
+        <span class="sar-title">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+          Lộ trình tiếp cận Node N2
+        </span>
+        <span class="eta-badge" id="sar-eta">ETA: --</span>
+      </div>
+
+      <div class="sar-metrics">
+        <div class="metric-item">
+          <div class="metric-label">Đường chim bay (Cấp 1)</div>
+          <div class="metric-val blue" id="sar-direct-dist">0.0 m</div>
+        </div>
+        <div class="metric-item">
+          <div class="metric-label">Phương vị La bàn</div>
+          <div class="metric-val" id="sar-bearing">--° (--)</div>
+        </div>
+      </div>
+
+      <div class="sar-route-row">
+        <span>Lộ trình mặt đường (Dijkstra):</span>
+        <b id="sar-road-dist" style="color:var(--g-blue);">0.0 m</b>
+      </div>
+      <div class="sar-route-row">
+        <span>Quãng đường N2 đã di chuyển:</span>
+        <span><b id="trail-dist" style="color:#d97706;">0.0 m</b> (<span id="trail-count">0</span> mốc)</span>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-focus" onclick="focusNodeN2()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+          Định tâm N2
+        </button>
+        <button class="btn btn-clear" onclick="clearNodeTrail()">
+          Xóa vết đường đi
+        </button>
+      </div>
+    </div>
+
+    <div class="section-label">Danh sách nút mạng trong vùng phủ</div>
+    <div id="node-list">Đang đồng bộ trạng thái các Node...</div>
+  </div>
+</div>
+
+<div id="map">
+  <div class="map-overlay-ctrl">
+    <label class="chip-toggle">
+      <input type="checkbox" id="toggle-labels" checked onchange="toggleMapLabels(this.checked)" />
+      Tên đường & Địa danh
+    </label>
+    <label class="chip-toggle" style="color:var(--g-blue);">
+      <input type="checkbox" id="toggle-routing" checked onchange="updateApproachRoute()" />
+      Chỉ đường tiếp cận (Dijkstra)
+    </label>
+  </div>
+</div>
+
+<script>
+  const GATEWAY_API = "http://192.168.4.1/data";
+  const CLEAR_TRAIL_API = "http://192.168.4.1/clear_trail";
+
+  const STORAGE_KEY_TRAIL = "lora_mesh_trail_v2";
+  const STORAGE_KEY_NODES = "lora_mesh_nodes_v2";
+  const RESCUE_SPEED_MPS = 1.25; // Vận tốc đi bộ cứu hộ tiêu chuẩn: 4.5 km/h = 1.25 m/s
+  const TERRAIN_FACTOR = 1.3;    // Hệ số uốn khúc địa hình k = 1.3
+
+  const FIXED_COORDS = {
+    "Gateway": [105.763807, 20.964279],
+    "N1":      [105.764250, 20.964550],
+    "N3":      [105.763400, 20.964600],
+    "N4":      [105.764300, 20.963950],
+    "N2":      [105.763100, 20.964100]
+  };
+
+  let savedTrail = [];
+  let cachedNodes = [];
+  try {
+    const rawTrail = localStorage.getItem(STORAGE_KEY_TRAIL);
+    if (rawTrail) savedTrail = JSON.parse(rawTrail);
+    const rawNodes = localStorage.getItem(STORAGE_KEY_NODES);
+    if (rawNodes) cachedNodes = JSON.parse(rawNodes);
+  } catch (e) {}
+
+  const geojsonMap = (typeof OFFLINE_MAP_DATA !== "undefined") ? OFFLINE_MAP_DATA : {
+    "type": "FeatureCollection", "features": []
+  };
+
+  // Bản đồ nền được phối màu theo đúng chuẩn Google Maps Light Mode
+  const map = new maplibregl.Map({
+    container: "map",
+    center: (savedTrail.length > 0) ? savedTrail[savedTrail.length - 1] : FIXED_COORDS["Gateway"],
+    zoom: 17,
+    style: {
+      "version": 8,
+      "sources": {
+        "offline-osm": { "type": "geojson", "data": geojsonMap },
+        "mesh-links": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } },
+        "n2-trail-source": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } },
+        "rescue-route-source": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } }
+      },
+      "layers": [
+        { "id": "bg", "type": "background", "paint": { "background-color": "#f8f9fa" } },
+        {
+          "id": "parks", "type": "fill", "source": "offline-osm",
+          "filter": ["any", ["has", "leisure"], ["==", ["get", "landuse"], "grass"], ["==", ["get", "natural"], "wood"]],
+          "paint": { "fill-color": "#e6f4ea", "fill-opacity": 0.9 }
+        },
+        {
+          "id": "water", "type": "fill", "source": "offline-osm",
+          "filter": ["any", ["has", "waterway"], ["==", ["get", "natural"], "water"]],
+          "paint": { "fill-color": "#aadaff", "fill-opacity": 0.95 }
+        },
+        {
+          "id": "buildings", "type": "fill", "source": "offline-osm",
+          "filter": ["has", "building"],
+          "paint": { "fill-color": "#f1f3f4", "fill-outline-color": "#dadce0" }
+        },
+        {
+          "id": "roads-minor-casing", "type": "line", "source": "offline-osm",
+          "filter": ["all", ["has", "highway"], ["!in", "highway", "primary", "secondary", "tertiary", "trunk"]],
+          "paint": { "line-color": "#dadce0", "line-width": 5.5 }
+        },
+        {
+          "id": "roads-minor", "type": "line", "source": "offline-osm",
+          "filter": ["all", ["has", "highway"], ["!in", "highway", "primary", "secondary", "tertiary", "trunk"]],
+          "paint": { "line-color": "#ffffff", "line-width": 3.8 }
+        },
+        {
+          "id": "roads-major-casing", "type": "line", "source": "offline-osm",
+          "filter": ["in", "highway", "primary", "secondary", "tertiary", "trunk"],
+          "paint": { "line-color": "#fbbc04", "line-width": 7 }
+        },
+        {
+          "id": "roads-major", "type": "line", "source": "offline-osm",
+          "filter": ["in", "highway", "primary", "secondary", "tertiary", "trunk"],
+          "paint": { "line-color": "#fde293", "line-width": 5 }
+        },
+        // LỚP CẤP ĐỘ 2: Đường chỉ đường Dijkstra kiểu Google Maps Navigation
+        {
+          "id": "rescue-road-casing", "type": "line", "source": "rescue-route-source",
+          "filter": ["==", ["get", "mode"], "road"],
+          "paint": { "line-color": "#1557b0", "line-width": 8, "line-opacity": 0.9 }
+        },
+        {
+          "id": "rescue-road-line", "type": "line", "source": "rescue-route-source",
+          "filter": ["==", ["get", "mode"], "road"],
+          "paint": { "line-color": "#4285f4", "line-width": 5, "line-opacity": 1 }
+        },
+        // LỚP CẤP ĐỘ 1: Đường tiếp cận cắt địa hình (Nét chấm bi xanh Google Maps)
+        {
+          "id": "rescue-offroad-line", "type": "line", "source": "rescue-route-source",
+          "filter": ["==", ["get", "mode"], "offroad"],
+          "paint": { "line-color": "#1a73e8", "line-width": 3.5, "line-dasharray": [2, 2] }
+        },
+        // Lớp tia sóng định tuyến LoRa Mesh
+        {
+          "id": "mesh-route-line", "type": "line", "source": "mesh-links",
+          "paint": { "line-color": "#188038", "line-width": 2.2, "line-dasharray": [3, 2] }
+        },
+        // Lớp đường lộ trình di chuyển của Node N2
+        {
+          "id": "n2-trail-casing", "type": "line", "source": "n2-trail-source",
+          "filter": ["==", "$type", "LineString"],
+          "paint": { "line-color": "#ffffff", "line-width": 6.5, "line-opacity": 0.9 }
+        },
+        {
+          "id": "n2-trail-line", "type": "line", "source": "n2-trail-source",
+          "filter": ["==", "$type", "LineString"],
+          "paint": { "line-color": "#d93025", "line-width": 4, "line-opacity": 0.95 }
+        },
+        {
+          "id": "n2-trail-points", "type": "circle", "source": "n2-trail-source",
+          "filter": ["==", "$type", "Point"],
+          "paint": { "circle-radius": 3.5, "circle-color": "#ffffff", "circle-stroke-width": 2, "circle-stroke-color": "#d93025" }
+        }
+      ]
+    }
+  });
+
+  map.addControl(new maplibregl.NavigationControl(), "top-right");
+  map.addControl(new maplibregl.ScaleControl({ maxWidth: 120, unit: "metric" }), "bottom-right");
+
+  const markers = {};
+  const mapLabelElements = [];
+  let milestoneMarkers = [];
+  let startPointMarker = null;
+  let latestN2Coord = (savedTrail.length > 0) ? savedTrail[savedTrail.length - 1] : FIXED_COORDS["N2"];
+  let totalMovedDistance = 0;
+
+  // =========================================================================
+  // CẤP ĐỘ 1: CÔNG THỨC HAVERSINE, GÓC PHƯƠNG VỊ LA BÀN (AZIMUTH) & ETA
+  // =========================================================================
+  function calcDistanceMeters(lon1, lat1, lon2, lat2) {
+    const R = 6371000;
+    const toRad = x => x * Math.PI / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+    return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  function calcBearing(lon1, lat1, lon2, lat2) {
+    const toRad = x => x * Math.PI / 180;
+    const toDeg = x => x * 180 / Math.PI;
+    const dLon = toRad(lon2 - lon1);
+    const y = Math.sin(dLon) * Math.cos(toRad(lat2));
+    const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
+              Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon);
+    const brng = (toDeg(Math.atan2(y, x)) + 360) % 360;
+    const dirs = ["Bắc", "Đông Bắc", "Đông", "Đông Nam", "Nam", "Tây Nam", "Tây", "Tây Bắc"];
+    const dirName = dirs[Math.round(brng / 45) % 8];
+    return { deg: Math.round(brng), text: dirName };
+  }
+
+  function formatDistance(meters) {
+    if (meters >= 1000) return (meters / 1000).toFixed(2) + " km";
+    return meters.toFixed(1) + " m";
+  }
+
+  function formatETA(seconds) {
+    if (seconds < 60) return Math.max(1, Math.round(seconds)) + " giây";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.round(seconds % 60);
+    return mins + " phút " + (secs > 0 ? secs + "s" : "");
+  }
+
+  // =========================================================================
+  // CẤP ĐỘ 2: ĐỒ THỊ MẶT ĐƯỜNG OFFLINE & THUẬT TOÁN DIJKSTRA
+  // =========================================================================
+  const roadGraph = { nodes: {}, adj: {} };
+  let roadGraphReady = false;
+
+  function buildOfflineRoadGraph() {
+    if (!geojsonMap || !geojsonMap.features) return;
+    let count = 0;
+
+    geojsonMap.features.forEach(f => {
+      if (!f.properties || !f.properties.highway) return;
+      if (!f.geometry || f.geometry.type !== "LineString") return;
+
+      const coords = f.geometry.coordinates;
+      for (let i = 0; i < coords.length; i++) {
+        const key = coords[i][0].toFixed(5) + "," + coords[i][1].toFixed(5);
+        if (!roadGraph.nodes[key]) {
+          roadGraph.nodes[key] = coords[i];
+          roadGraph.adj[key] = [];
+          count++;
+        }
+        if (i > 0) {
+          const prevKey = coords[i - 1][0].toFixed(5) + "," + coords[i - 1][1].toFixed(5);
+          const w = calcDistanceMeters(coords[i - 1][0], coords[i - 1][1], coords[i][0], coords[i][1]);
+          roadGraph.adj[key].push({ to: prevKey, weight: w });
+          roadGraph.adj[prevKey].push({ to: key, weight: w });
+        }
+      }
+    });
+    if (count > 0) roadGraphReady = true;
+  }
+
+  function findNearestRoadVertex(coord) {
+    let bestKey = null;
+    let minDist = Infinity;
+    for (const key in roadGraph.nodes) {
+      const pt = roadGraph.nodes[key];
+      const d = calcDistanceMeters(coord[0], coord[1], pt[0], pt[1]);
+      if (d < minDist) {
+        minDist = d;
+        bestKey = key;
+      }
+    }
+    return { key: bestKey, dist: minDist };
+  }
+
+  function findShortestRoadPath(startCoord, targetCoord) {
+    if (!roadGraphReady) return null;
+    const startNearest = findNearestRoadVertex(startCoord);
+    const endNearest = findNearestRoadVertex(targetCoord);
+
+    if (!startNearest.key || !endNearest.key || startNearest.dist > 300 || endNearest.dist > 300) {
+      return null;
+    }
+
+    const dist = {};
+    const prev = {};
+    const visited = new Set();
+    const queue = [];
+
+    for (const k in roadGraph.nodes) dist[k] = Infinity;
+    dist[startNearest.key] = 0;
+    queue.push({ key: startNearest.key, d: 0 });
+
+    while (queue.length > 0) {
+      queue.sort((a, b) => a.d - b.d);
+      const curr = queue.shift();
+      if (visited.has(curr.key)) continue;
+      visited.add(curr.key);
+
+      if (curr.key === endNearest.key) break;
+
+      const neighbors = roadGraph.adj[curr.key] || [];
+      for (const edge of neighbors) {
+        if (visited.has(edge.to)) continue;
+        const alt = dist[curr.key] + edge.weight;
+        if (alt < dist[edge.to]) {
+          dist[edge.to] = alt;
+          prev[edge.to] = curr.key;
+          queue.push({ key: edge.to, d: alt });
+        }
+      }
+    }
+
+    if (dist[endNearest.key] === Infinity) return null;
+
+    const pathCoords = [];
+    let u = endNearest.key;
+    while (u) {
+      pathCoords.unshift(roadGraph.nodes[u]);
+      u = prev[u];
+    }
+
+    return {
+      roadCoords: pathCoords,
+      roadDistance: dist[endNearest.key],
+      offroadDistance: startNearest.dist + endNearest.dist
+    };
+  }
+
+  function updateApproachRoute() {
+    const gw = FIXED_COORDS["Gateway"];
+    const target = latestN2Coord;
+
+    const directDist = calcDistanceMeters(gw[0], gw[1], target[0], target[1]);
+    const bearing = calcBearing(gw[0], gw[1], target[0], target[1]);
+
+    document.getElementById("sar-direct-dist").innerText = formatDistance(directDist);
+    document.getElementById("sar-bearing").innerText = `${bearing.deg}° (${bearing.text})`;
+
+    const routeResult = findShortestRoadPath(gw, target);
+    const features = [];
+    let totalEffectiveDist = directDist * TERRAIN_FACTOR;
+
+    const showRouting = document.getElementById("toggle-routing").checked;
+
+    if (routeResult && routeResult.roadCoords.length >= 2) {
+      totalEffectiveDist = routeResult.roadDistance + (routeResult.offroadDistance * TERRAIN_FACTOR);
+      document.getElementById("sar-road-dist").innerText = 
+        `${formatDistance(routeResult.roadDistance)} (+${formatDistance(routeResult.offroadDistance)} bộ)`;
+
+      if (showRouting) {
+        features.push({
+          "type": "Feature",
+          "properties": { "mode": "road" },
+          "geometry": { "type": "LineString", "coordinates": routeResult.roadCoords }
+        });
+        const firstRoadPt = routeResult.roadCoords[0];
+        const lastRoadPt = routeResult.roadCoords[routeResult.roadCoords.length - 1];
+        features.push({
+          "type": "Feature",
+          "properties": { "mode": "offroad" },
+          "geometry": { "type": "LineString", "coordinates": [gw, firstRoadPt] }
+        });
+        features.push({
+          "type": "Feature",
+          "properties": { "mode": "offroad" },
+          "geometry": { "type": "LineString", "coordinates": [lastRoadPt, target] }
+        });
+      }
+    } else {
+      document.getElementById("sar-road-dist").innerText = 
+        `${formatDistance(totalEffectiveDist)} (Hệ số k=1.3)`;
+      if (showRouting) {
+        features.push({
+          "type": "Feature",
+          "properties": { "mode": "offroad" },
+          "geometry": { "type": "LineString", "coordinates": [gw, target] }
+        });
+      }
+    }
+
+    const etaSeconds = totalEffectiveDist / RESCUE_SPEED_MPS;
+    document.getElementById("sar-eta").innerText = "ETA: " + formatETA(etaSeconds);
+
+    if (map.getSource("rescue-route-source")) {
+      map.getSource("rescue-route-source").setData({
+        "type": "FeatureCollection",
+        "features": features
+      });
+    }
+  }
+
+  // =========================================================================
+  // HIỂN THỊ NHÃN BẢN ĐỒ & LỊCH SỬ QUÃNG ĐƯỜNG ĐÃ ĐI
+  // =========================================================================
+  function renderOfflineMapLabels() {
+    if (!geojsonMap || !geojsonMap.features) return;
+    const shownNames = new Set();
+
+    geojsonMap.features.forEach(f => {
+      const props = f.properties || {};
+      const name = props["name:vi"] || props.name;
+      if (!name || shownNames.has(name)) return;
+
+      let coord = null;
+      if (f.geometry.type === "LineString" && f.geometry.coordinates.length > 0) {
+        const midIdx = Math.floor(f.geometry.coordinates.length / 2);
+        coord = f.geometry.coordinates[midIdx];
+      } else if (f.geometry.type === "Polygon" && f.geometry.coordinates[0].length > 0) {
+        const ring = f.geometry.coordinates[0];
+        let sumLon = 0, sumLat = 0;
+        ring.forEach(pt => { sumLon += pt[0]; sumLat += pt[1]; });
+        coord = [sumLon / ring.length, sumLat / ring.length];
+      } else if (f.geometry.type === "Point") {
+        coord = f.geometry.coordinates;
+      }
+
+      if (coord) {
+        shownNames.add(name);
+        const el = document.createElement("div");
+        el.className = props.highway ? "road-label" : "poi-label";
+        el.innerText = name;
+        new maplibregl.Marker({ element: el }).setLngLat(coord).addTo(map);
+        mapLabelElements.push(el);
+      }
+    });
+  }
+
+  function toggleMapLabels(show) {
+    mapLabelElements.forEach(el => {
+      el.style.display = show ? "block" : "none";
+    });
+  }
+
+  function setNodeMarker(id, lngLat, htmlContent, type) {
+    if (!markers[id]) {
+      const el = document.createElement("div");
+      el.className = "marker-label " + type;
+      el.innerHTML = htmlContent;
+      markers[id] = new maplibregl.Marker({ element: el }).setLngLat(lngLat).addTo(map);
+    } else {
+      markers[id].setLngLat(lngLat);
+      markers[id].getElement().innerHTML = htmlContent;
+    }
+  }
+
+  function renderTrailOnMap() {
+    if (!map.getSource("n2-trail-source")) return;
+
+    const features = [];
+    if (savedTrail.length >= 2) {
+      features.push({
+        "type": "Feature",
+        "geometry": { "type": "LineString", "coordinates": savedTrail }
+      });
+    }
+    savedTrail.forEach(pt => {
+      features.push({
+        "type": "Feature",
+        "geometry": { "type": "Point", "coordinates": pt }
+      });
+    });
+
+    map.getSource("n2-trail-source").setData({
+      "type": "FeatureCollection",
+      "features": features
+    });
+
+    milestoneMarkers.forEach(m => m.remove());
+    milestoneMarkers = [];
+    if (startPointMarker) {
+      startPointMarker.remove();
+      startPointMarker = null;
+    }
+
+    if (savedTrail.length > 0) {
+      const startEl = document.createElement("div");
+      startEl.className = "start-marker";
+      startEl.innerText = "Điểm xuất phát";
+      startPointMarker = new maplibregl.Marker({ element: startEl })
+        .setLngLat(savedTrail[0])
+        .addTo(map);
+    }
+
+    totalMovedDistance = 0;
+    let nextMilestone = 50;
+
+    for (let i = 1; i < savedTrail.length; i++) {
+      const segDist = calcDistanceMeters(
+        savedTrail[i - 1][0], savedTrail[i - 1][1],
+        savedTrail[i][0], savedTrail[i][1]
+      );
+      totalMovedDistance += segDist;
+
+      if (totalMovedDistance >= nextMilestone) {
+        const msEl = document.createElement("div");
+        msEl.className = "milestone-marker";
+        msEl.innerText = formatDistance(totalMovedDistance);
+        const m = new maplibregl.Marker({ element: msEl })
+          .setLngLat(savedTrail[i])
+          .addTo(map);
+        milestoneMarkers.push(m);
+        nextMilestone += 50;
+      }
+    }
+
+    document.getElementById("trail-count").innerText = savedTrail.length;
+    document.getElementById("trail-dist").innerText = formatDistance(totalMovedDistance);
+    updateApproachRoute();
+  }
+
+  function addPointToLocalTrail(lon, lat) {
+    if (!lon || !lat || lon === 0 || lat === 0) return;
+    if (savedTrail.length > 0) {
+      const last = savedTrail[savedTrail.length - 1];
+      const dist = calcDistanceMeters(last[0], last[1], lon, lat);
+      if (dist < 2.0 || dist > 2000) return;
+    }
+    savedTrail.push([lon, lat]);
+    try {
+      localStorage.setItem(STORAGE_KEY_TRAIL, JSON.stringify(savedTrail));
+    } catch (e) {}
+  }
+
+  function focusNodeN2() {
+    map.flyTo({ center: latestN2Coord, zoom: 18, speed: 1.2 });
+  }
+
+  async function clearNodeTrail() {
+    if (!confirm("Bạn có chắc chắn muốn xóa toàn bộ lịch sử quãng đường đã lưu không?")) return;
+    savedTrail = [];
+    totalMovedDistance = 0;
+    try {
+      localStorage.removeItem(STORAGE_KEY_TRAIL);
+      localStorage.removeItem(STORAGE_KEY_NODES);
+    } catch (e) {}
+    renderTrailOnMap();
+    try { await fetch(CLEAR_TRAIL_API); } catch (e) {}
+  }
+
+  map.on("load", () => {
+    buildOfflineRoadGraph();
+    renderOfflineMapLabels();
+    setNodeMarker("Gateway", FIXED_COORDS["Gateway"], "TRẠM CHỈ HUY (GW)", "gw");
+    renderTrailOnMap();
+
+    if (cachedNodes && cachedNodes.length > 0) {
+      document.getElementById("conn-status").innerHTML = 
+        "<span style='color:#d97706;font-weight:600;'>● Đã khôi phục vị trí từ bộ nhớ (Đang đợi Gateway...)</span>";
+      updateDashboard(cachedNodes, true);
+    }
+  });
+
+  async function fetchMeshData() {
+    try {
+      const res = await fetch(GATEWAY_API, { cache: "no-store" });
+      const data = await res.json();
+      document.getElementById("conn-status").innerHTML = 
+        "<span style='color:#188038;font-weight:600;'>● Đang kết nối trực tuyến với Wi-Fi Gateway</span>";
+
+      if (Array.isArray(data.trail) && data.trail.length > savedTrail.length) {
+        savedTrail = data.trail;
+        try { localStorage.setItem(STORAGE_KEY_TRAIL, JSON.stringify(savedTrail)); } catch (e) {}
+      }
+
+      if (Array.isArray(data.nodes) && data.nodes.length > 0) {
+        cachedNodes = data.nodes;
+        try { localStorage.setItem(STORAGE_KEY_NODES, JSON.stringify(cachedNodes)); } catch (e) {}
+        updateDashboard(data.nodes, false);
+      }
+    } catch (err) {
+      document.getElementById("conn-status").innerHTML = 
+        "<span style='color:#d93025;font-weight:600;'>● Mất kết nối Gateway (Hiển thị dữ liệu lưu gần nhất)</span>";
+      if (cachedNodes && cachedNodes.length > 0) {
+        updateDashboard(cachedNodes, true);
+      }
+    }
+  }
+
+  function updateDashboard(nodes, isFromCache) {
+    const listEl = document.getElementById("node-list");
+    listEl.innerHTML = "";
+    const lineFeatures = [];
+    const currentCoords = { ...FIXED_COORDS };
+
+    if (savedTrail.length > 0) {
+      currentCoords["N2"] = savedTrail[savedTrail.length - 1];
+      latestN2Coord = savedTrail[savedTrail.length - 1];
+    }
+
+    nodes.forEach(n => {
+      const speedKmh = (typeof n.spd === "number" && n.spd >= 0) ? n.spd : 0.0;
+
+      if (n.valid && n.lat !== 0 && n.lon !== 0) {
+        currentCoords[n.id] = [n.lon, n.lat];
+        if (n.id === "N2") {
+          latestN2Coord = [n.lon, n.lat];
+          if (!isFromCache) {
+            addPointToLocalTrail(n.lon, n.lat);
+          }
+        }
+      }
+
+      const coord = currentCoords[n.id] || FIXED_COORDS["Gateway"];
+      const isMobile = (n.id === "N2");
+
+      const distFromGw = calcDistanceMeters(
+        FIXED_COORDS["Gateway"][0], FIXED_COORDS["Gateway"][1],
+        coord[0], coord[1]
+      );
+      const brngFromGw = calcBearing(
+        FIXED_COORDS["Gateway"][0], FIXED_COORDS["Gateway"][1],
+        coord[0], coord[1]
+      );
+      const etaNodeSec = (distFromGw * TERRAIN_FACTOR) / RESCUE_SPEED_MPS;
+
+      if (isMobile) {
+        renderTrailOnMap();
+      }
+
+      let markerHtml = `${n.id} (${n.rssi} dBm)` +
+                       `<span class="marker-sub">${formatDistance(distFromGw)} • ${brngFromGw.deg}° ${brngFromGw.text}</span>`;
+      if (isMobile) {
+        markerHtml = `${n.id} • ${speedKmh.toFixed(1)} km/h` +
+                     `<span class="marker-sub">Cách ${formatDistance(distFromGw)} (${brngFromGw.text})</span>`;
+      }
+      setNodeMarker(n.id, coord, markerHtml, isMobile ? "mobile" : "");
+
+      const gpsText = n.valid 
+        ? `${n.lat.toFixed(6)}, ${n.lon.toFixed(6)}` 
+        : (isMobile && savedTrail.length > 0 
+            ? `${latestN2Coord[1].toFixed(6)}, ${latestN2Coord[0].toFixed(6)} (Lưu đệm)` 
+            : "Đang chờ tín hiệu GPS...");
+      const speedText = n.valid ? `${speedKmh.toFixed(1)} km/h` : "0.0 km/h";
+
+      listEl.innerHTML += `
+        <div class="node-card ${isMobile ? 'mobile' : ''}">
+          <div class="node-title">
+            <span>Node ${n.id} ${isMobile ? '• Thiết bị Di động' : '• Trạm Chuyển tiếp'}</span>
+            <span class="rssi-pill">${n.rssi} dBm</span>
+          </div>
+          <div class="node-meta">Tọa độ: <b>${gpsText}</b></div>
+          <div class="node-meta">Khoảng cách: <b style="color:var(--g-blue)">${formatDistance(distFromGw)}</b> • Hướng: <b>${brngFromGw.deg}° (${brngFromGw.text})</b></div>
+          <div class="node-meta">Thời gian tiếp cận: <b style="color:var(--g-green)">${formatETA(etaNodeSec)}</b> • Tốc độ: <span class="speed-badge">${speedText}</span></div>
+          <div class="node-meta">Số chặng (Hops): <b>${n.hops}</b> • Cập nhật: <b>${isFromCache ? 'Bộ nhớ đệm' : (n.age + ' giây trước')}</b></div>
+          <div class="path-badge">Lộ trình: ${n.path} → Gateway</div>
+        </div>
+      `;
+
+      const hopsArr = n.path.split("->").map(s => s.trim());
+      hopsArr.push("Gateway");
+      for (let i = 0; i < hopsArr.length - 1; i++) {
+        const fromNode = hopsArr[i];
+        const toNode = hopsArr[i + 1];
+        if (currentCoords[fromNode] && currentCoords[toNode]) {
+          lineFeatures.push({
+            "type": "Feature",
+            "geometry": {
+              "type": "LineString",
+              "coordinates": [currentCoords[fromNode], currentCoords[toNode]]
+            }
+          });
+        }
+      }
+    });
+
+    if (map.getSource("mesh-links")) {
+      map.getSource("mesh-links").setData({
+        "type": "FeatureCollection",
+        "features": lineFeatures
+      });
+    }
+  }
+
+  setInterval(fetchMeshData, 2000);
+</script>
+</body>
+</html>
